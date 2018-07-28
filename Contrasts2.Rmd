@@ -3,6 +3,8 @@ title: "Contrasts 2"
 author: 'Witold Wolski Std Nr:'
 date: "July 28, 2018"
 output: html_document
+editor_options: 
+  chunk_output_type: console
 ---
 
 Contrasts can be used to make specific comparisons of treatments within a linear model.
