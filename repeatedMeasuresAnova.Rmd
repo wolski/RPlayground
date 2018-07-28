@@ -1,0 +1,153 @@
+---
+title: "RepeatedMeasuresAnova"
+author: 'Witold Wolski Std Nr:'
+date: "July 20, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+NOTE: This post only contains information on repeated measures ANOVAs, and not how to conduct a comparable analysis using a linear mixed model. For that, be on the lookout for an upcoming post!
+
+When I was studying psychology as an undergraduate, one of my biggest frustrations with R was the lack of quality support for repeated measures ANOVAs.They’re a pretty common thing to run into in much psychological research, and having to wade through incomplete and often contradictory advice for conducting them was (and still is) a pain, to put it mildly.
+
+Thankfully, though, they’re not too tricky to set up once you figure out what you’re doing.
+
+To get started, let’s construct a phony data set where we’re measuring participant stress on a 100-point scale. Higher numbers mean the participant is more stressed out. For our experimental manipulation, let’s say that participants are exposed to a series of several images presented with various background music playing. The images can depict scenes that are happy or angry. The background music can be a Disney soundtrack or music from a horror movie. Each participant sees multiple images and listens to multiple music samples. (Your variables can have more than 2 factors, and you can include more than 2 IVs. We’re just keeping it simple for the purposes of explanation!)
+
+First, here’s the code we’ll use to generate our phony data:
+
+```{r}
+set.seed(5250)
+
+myData <- data.frame(PID = rep(seq(from = 1,
+                               to = 50, by = 1), 20),
+                     stress = sample(x = 1:100,
+                                     size = 1000,
+                                     replace = TRUE),
+                     image = sample(c("Happy", "Angry"),
+                                    size = 1000,
+                                    replace = TRUE),
+                     music = sample(c("Disney", "Horror"),
+                                    size = 1000,
+                                    replace = TRUE)
+)
+
+myData <- within(myData, {
+  PID   <- factor(PID)
+  image <- factor(image)
+  music <- factor(music)
+})
+
+myData <- myData[order(myData$PID), ]
+head(myData)
+```
+
+So we see that we have one row per observation per participant. If your dataset is in wide form rather than long, I’d suggest checking out our article on converting between wide and long since everything from this point out assumes that your data look like what’s shown above!
+
+# Extracting Condition Means
+
+Before we can run our ANOVA, we need to find the mean stress value for each participant for each combination of conditions. We’ll do that with:
+
+```{r}
+myData.mean <- aggregate(myData$stress,
+                      by = list(myData$PID, myData$music,
+                              myData$image),
+                      FUN = 'mean')
+
+colnames(myData.mean) <- c("PID","music","image","stress")
+
+myData.mean <- myData.mean[order(myData.mean$PID), ]
+head(myData.mean)
+```
+
+So now we’ve gone from one row per participant per observation to one row per participant per condition. At this point we’re ready to actually construct our ANOVA!
+
+#Building the ANOVA
+
+Now, our actual ANOVA is going to look something like this:
+
+```{r}
+stress.aov <- with(myData.mean,
+                   aov(stress ~ music * image +
+                       Error(PID / (music * image)))
+)
+
+```
+
+But what’s all that mean? What’s with that funky Error() term we threw in there? Pretty simple: what we’re saying is that we want to look at how stress changes as a function of the music and image that participants were shown. (Thus the stress ~ music * image) The asterisk specifies that we want to look at the interaction between the two IVs as well. But since this was a repeated measures design, we need to specify an error term that accounts for natural variation from participant to participant. (E.g., I might react a little differently to scary music than you do because I love zombie movies and you hate them!) We do this with the Error() function: specifically, we are saying that we want to control for that between-participant variation over all of our within-subjects variables.
+
+Now that we’ve specified our model, we can go ahead and look at the results:
+
+```{r}
+summary(stress.aov)
+```
+We see that there is no main effect of either music:
+or image:
+on participant stress. Likewise, we see that there is not a significant interaction effect between the two independent variables:
+
+# What do I do with my Between-Subjects Effects?
+
+This has all been fine and good, but what if you have an independent variable that’s between-subjects? To continue our previous example, let’s say that some participants could only come in during the day and some could only come in at night. Our data might instead look like this:
+
+```{r}
+set.seed(5250)
+
+myData <- data.frame(PID = rep(seq(from = 1,
+                               to = 50, by = 1), 20),
+                     stress = sample(x = 1:100,
+                                     size = 1000,
+                                     replace = TRUE),
+                     image = sample(c("Happy", "Angry"),
+                                    size = 1000,
+                                    replace = TRUE),
+                     music = sample(c("Disney", "Horror"),
+                                    size = 1000,
+                                    replace = TRUE),
+                     time = rep(sample(c("Day", "Night"),
+                                       size = 50,
+                                       replace = TRUE), 2))
+
+head(myData)
+
+```
+
+
+From there, the steps we take look pretty similar to before:
+
+```{r}
+myData <- within(myData, {
+  PID   <- factor(PID)
+  image <- factor(image)
+  music <- factor(music)
+  time  <- factor(time)
+})
+
+myData <- myData[order(myData$PID), ]
+head(myData)
+
+myData.mean <- aggregate(myData$stress,
+                         by = list(myData$PID, myData$music,
+                                 myData$image, myData$time),
+                         FUN = 'mean')
+
+colnames(myData.mean) <- c("PID", "music", "image",
+                           "time", "stress")
+myData.mean <- myData.mean[order(myData.mean$PID), ]
+
+stress.aov <- with(myData.mean, aov(stress ~ time * music *
+                                    image + Error(PID /
+                                    (music * image))))
+summary(stress.aov)
+
+```
+
+The only big difference is that we don’t include between-subjects factor (time) in the Error() term. In any case, we see that there are no significant main effects (of time, music, or image) nor any significant interactions (between time and music, time and image, music and image, or music and time and image).
+
+# Dealing with “Error() model is singular”
+
+Sometimes you might be unlucky enough to get this error when you try to specify your aov() object. It’s not the end of the world, it just means that you don’t have an observation for every between-subjects condition for every participant. This can happen due to a bug in your programming, a participant being noncompliant, data trimming after the fact, or a whole host of other reasons. The moral of the story, though, is that you need to find the participant that is missing data and drop him or her from this analysis for the error to go away. Or, if the idea of dropping a participant entirely rubs you the wrong way, you could look into conducting the analysis as a linear mixed model. We don’t have a tutorial for that (yet!), but keep your eyes peeled: as soon as it’s written, we’ll update this post and link you to it!
+
+Have questions? Post a comment below! Or download the full code used in this example.

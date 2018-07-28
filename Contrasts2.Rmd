@@ -1,0 +1,518 @@
+---
+title: "Contrasts 2"
+author: 'Witold Wolski Std Nr:'
+date: "July 28, 2018"
+output: html_document
+---
+
+Contrasts can be used to make specific comparisons of treatments within a linear model.
+
+One common use is when a factorial design is used, but control or check treatments are used in addition to the factorial design.  In the first example below, there are two treatments (D and C) each at two levels (1 and 2), and then there is a Control treatment. The approach used here is to analyze the experiment as a one-way analysis of variance, and then use contrasts to test various hypotheses.
+
+ 
+
+Another common use is when there are several treatments that could be thought of as members of a group.  In the second example below,  there are measurements for six wines, some of which are red (Merlot, Cabernet, Syrah) and some of which are white (Chardonnay, Riesling, Gewürztraminer).  We can compare the treatments within the red wine group by setting up contrasts and conducting an F-test.  This is analogous to testing the main effect of Red Wine.
+
+ 
+
+The packages lsmeans and multcomp allow for unlimited tests of single-degree contrasts, with a p-value correction for multiple tests.  They also allow for an F-test for multi-line contrasts, for example when testing within groups.  The aov function in the native stats package has more limited functionality.
+
+ 
+
+See the chapters on One-way Anova and Two-way Anova for general considerations on conducting analysis of variance
+
+ 
+
+Packages used in this chapter
+The following commands will install these packages if they are not already installed:
+
+[lsmeans upgrade emmeans](https://cran.r-project.org/web/packages/emmeans/index.html)
+
+```{r eval=FALSE}
+if(!require(car)){install.packages("car")}
+if(!require(lsmeans)){install.packages("lsmeans")}
+if(!require(multcomp)){install.packages("multcomp")}
+```
+
+Example for single degree-of-freedom contrasts
+This hypothetical example could represent an experiment with a factorial design two treatments (D and C) each at two levels (1 and 2), and a control treatment.  The 2-by-2 factorial plus control is treated as a one-way anova with five treatments.
+
+```{r}
+Input = ("
+Treatment   Response
+ 'D1:C1'    1.0
+ 'D1:C1'    1.2
+ 'D1:C1'    1.3
+ 'D1:C2'    2.1
+ 'D1:C2'    2.2
+ 'D1:C2'    2.3
+ 'D2:C1'    1.4
+ 'D2:C1'    1.6
+ 'D2:C1'    1.7
+ 'D2:C2'    2.5
+ 'D2:C2'    2.6
+ 'D2:C2'    2.8
+ 'Control'  1.0
+ 'Control'  0.9
+ 'Control'  0.8
+")
+
+Data = read.table(textConnection(Input),header=TRUE)
+```
+
+Specify the order of factor levels. Otherwise R will alphabetize them.
+
+```{r}
+Data$Treatment = factor(Data$Treatment, 
+                        levels=unique(Data$Treatment))
+
+
+boxplot(Response ~ Treatment,
+        data = Data,
+        ylab="Response",
+        xlab="Treatment")
+
+```
+
+
+
+Define linear model
+
+```{r}
+model = lm(Response ~ Treatment, 
+           data = Data)
+
+library(car)
+
+Anova(model, type="II")
+
+summary(model)
+```
+
+# Example with lsmeans
+
+You need to look at order of factor levels to determine the contrasts
+
+```{r}
+levels(Data$Treatment)     
+```
+
+
+```{r}
+library(lsmeans)
+
+leastsquare = lsmeans(model, "Treatment")
+
+Contrasts = list(D1vsD2          = c(1,  1, -1, -1,  0),
+                 C1vsC2          = c(1, -1,  1, -1,  0),
+                 InteractionDC   = c(1, -1, -1,  1,  0),
+                 C1vsC2forD1only = c(1, -1,  0,  0,  0),
+                 C1vsC2forD2only = c(0,  0,  1, -1,  0),
+                 TreatsvsControl = c(1,  1,  1,  1, -4),
+                 T1vsC           = c(1,  0,  0,  0, -1),
+                 T2vsC           = c(0,  1,  0,  0, -1),
+                 T3vsC           = c(0,  0,  1,  0, -1),
+                 T4vsC           = c(0,  0,  0,  1, -1))
+```
+
+The column names match the order of levels of the treatment variable
+The coefficients of each row sum to 0
+
+```{r}
+contrast(leastsquare, Contrasts, adjust="sidak")
+```
+
+
+Note that p-values are slightly different than those from multcomp
+due to different adjustment methods.  If “none” is chosen as
+the adjustment method for both procedures,
+p-values and other statistics will be the same.
+
+With adjust="none", results will be the same as the aov method.
+
+
+## Example with multcomp
+
+You need to look at order of factor levels to determine the contrasts
+
+```{r}
+levels(Data$Treatment)     
+```
+
+
+```{r}
+Input = ("
+Contrast.Name     D1C2  D1C2 D2C1 D2C2  Control
+ D1vsD2            1     1   -1   -1     0
+ C1vsC2            1    -1    1   -1     0
+ InteractionDC     1    -1   -1    1     0
+ C1vsC2forD1only   1    -1    0    0     0
+ C1vsC2forD2only   0     0    1   -1     0
+ TreatsvsControl   1     1    1    1    -4
+ T1vsC             1     0    0    0    -1
+ T2vsC             0     1    0    0    -1
+ T3vsC             0     0    1    0    -1
+ T4vsC             0     0    0    1    -1
+")
+```
+
+The column names match the order of levels of the treatment variable. The coefficients of each row sum to 0
+
+```{r}
+Matriz = as.matrix(read.table(textConnection(Input),
+                   header=TRUE,
+                   row.names=1))
+
+
+library(multcomp)
+
+G = glht(model, 
+         linfct = mcp(Treatment = Matriz))
+
+G$linfct
+
+summary(G, 
+        test=adjusted("single-step"))
+```
+
+Adjustment options: "none", "single-step", "Shaffer", 
+                     "Westfall", "free", "holm", "hochberg", 
+                   "hommel", "bonferroni", "BH", "BY", "fdr"
+
+
+
+With test=adjusted("none"), results will be the same as aov method below.
+
+ 
+
+Example for global F-test within a group of treatments
+This example has treatments consisting of three red wines and three white wines.  We will want to know if there is an effect of the treatments in the red wine group on the response variable, while keeping the individual identities of the wines in the Treatment variable.  This approach is advantageous because post-hoc comparisons could still be made within the red wines, for example comparing Merlot to Cabernet.
+
+```{r}
+Input = ("
+Treatment          Response
+ Merlot             5
+ Merlot             6
+ Merlot             7
+ Cabernet           8
+ Cabernet           9
+ Cabernet          10
+ Syrah             11
+ Syrah             12
+ Syrah             13
+
+ Chardonnay         1
+ Chardonnay         2
+ Chardonnay         3
+ Riesling           1
+ Riesling           2 
+ Riesling           2
+ Gewürtztraminer    1 
+ Gewürtztraminer    2
+ Gewürtztraminer    4
+")
+
+Data = read.table(textConnection(Input),header=TRUE)
+```
+
+Specify the order of factor levels. Otherwise R will alphabetize them.
+
+```{r}
+Data$Treatment = factor(Data$Treatment, 
+                        levels=unique(Data$Treatment))
+
+Data
+
+boxplot(Response ~ Treatment,
+        data = Data,
+        ylab="Response",
+        xlab="Treatment")
+```
+
+
+You need to look at order of factor levels to determine the contrasts
+
+```{r}
+levels(Data$Treatment)
+```
+
+Define linear model
+
+```{r}
+model = lm(Response ~ Treatment, 
+           data = Data)
+
+library(car)
+
+Anova(model, type="II")
+
+summary(model)
+```
+
+Tests of contrasts with lsmeans
+
+
+Question: Is there an effect within red wine ?
+ 
+```{r}
+library(lsmeans)
+
+leastsquare = lsmeans(model, "Treatment")
+
+Contrasts = list(Red_line1   = c(1, -1,  0,  0,  0,  0),
+                 Red_line2   = c(0,  1, -1,  0,  0,  0))
+
+   ### The column names match the order of levels of the treatment variable
+   ### The coefficients of each row sum to 0
+
+Test = contrast(leastsquare, Contrasts)
+
+test(Test, joint=TRUE)
+```
+
+Note that two lines of contrasts resulted in one hypothesis test using 2 degrees of freedom.  This investigated the effect within a group of 3 treatments.
+
+Results are essentially the same as those from multcomp
+
+Question: Is there an effect within white wine ?
+
+```{r}
+library(lsmeans)
+
+leastsquare = lsmeans(model, "Treatment")
+
+Contrasts = list(White_line1   = c(0,  0,  0,  1, -1,  0),
+                 White_line2   = c(0,  0,  0,  0,  1, -1))
+```
+
+The column names match the order of levels of the treatment variable. The coefficients of each row sum to 0.
+
+```{r}
+Test = contrast(leastsquare, Contrasts)
+test(Test, joint=TRUE)
+
+```
+
+Note that two lines of contrasts resulted in one hypothesis test using 2 degrees of freedom.  This investigated the effect within a group of 3 treatments
+
+Results are the same as those from multcomp
+
+Question: Is there a difference between red and white wines?  And, mean separation for red wine
+
+```{r}
+library(lsmeans)
+
+leastsquare = lsmeans(model, "Treatment")
+
+Contrasts = list(Red_vs_white    = c( 1,  1,  1, -1, -1, -1),
+                 Merlot_vs_Cab   = c( 1, -1,  0,  0,  0,  0),
+                 Cab_vs_Syrah    = c( 0,  1, -1,  0,  0,  0),
+                 Syrah_vs_Merlot = c(-1,  0,  1,  0,  0,  0))
+```
+
+The column names match the order of levels of the treatment variable. The coefficients of each row sum to 0.
+
+```{r}
+contrast(leastsquare, Contrasts, adjust="sidak")
+```
+
+
+Tests of contrasts with multcomp
+ 
+
+Question: Is there an effect within red wine ?
+
+```{r}
+Input = "
+Contrast    Merlot  Cabernet  Syrah  Chardonnay  Riesling  Gewürtztraminer
+ Red_line1  1       -1         0     0           0         0
+ Red_line2  0        1        -1     0           0         0
+"
+```
+
+Note: there are two lines of contrasts for a group of three treatments
+
+The column names match the order of levels of the treatment variable
+The coefficients of each row sum to 0
+
+```{r}
+Matriz = as.matrix(read.table(textConnection(Input),
+                   header=TRUE,
+                   row.names=1))
+
+
+Matriz
+
+library(multcomp)
+
+G = glht(model, linfct = mcp(Treatment = Matriz))
+
+G$linfct
+
+
+summary(G, 
+        test = Ftest())
+```
+
+Note that two lines of contrasts resulted in one hypothesis test
+using 2 degrees of freedom.  This investigated the effect within
+  a group of 3 treatments.
+
+
+
+Question: Is there an effect within white wine ?
+
+```{r}
+Input = "
+Contrast    Merlot  Cabernet  Syrah  Chardonnay  Riesling  Gewürtztraminer
+ White_line1  0       0         0      1           -1          0
+ White_line2  0       0         0      0            1         -1
+"
+```
+Note: there are two lines of contrasts for a group of three treatments
+
+The column names match the order of levels of the treatment variable
+The coefficients of each row sum to 0
+
+```{r}
+Matriz = as.matrix(read.table(textConnection(Input),
+                   header=TRUE,
+                   row.names=1))
+
+
+Matriz
+
+library(multcomp)
+
+G = glht(model, linfct = mcp(Treatment = Matriz))
+
+G$linfct
+
+
+summary(G, 
+        test = Ftest())
+```
+
+Note that two lines of contrasts resulted in one hypothesis test using 2 degrees of freedom.  This investigated the effect within.
+
+a group of 3 treatments.
+
+ 
+
+ 
+
+Question: Is there a difference between red and white wines?  And, mean separation for red wine
+
+```{r}
+Input = "
+Contrast          Merlot  Cabernet  Syrah  Chardonnay  Riesling  Gewürtztraminer
+ Red_vs_white      1        1         1     -1          -1        -1
+ Merlot_vs_Cab     1       -1         0      0           0         0
+ Cab_vs_Syrah      0        1        -1      0           0         0      
+ Syrah_vs_Merlot  -1        0         1      0           0         0         
+"
+```
+
+ names match the order of levels of the treatment variable
+ The coefficients of each row sum to 0
+
+
+```{r}
+Matriz = as.matrix(read.table(textConnection(Input),
+                   header=TRUE,
+                   row.names=1))
+
+Matriz
+
+library(multcomp)
+
+G = glht(model, 
+         linfct = mcp(Treatment = Matriz))
+
+G$linfct
+
+summary(G, 
+        test=adjusted("single-step"))
+```
+
+Adjustment options: "none", "single-step", "Shaffer", 
+                     "Westfall", "free", "holm", "hochberg", 
+                   "hommel", "bonferroni", "BH", "BY", "fdr"
+
+
+
+With test=adjusted("none"), results will be the same as aov method below.
+
+
+
+ Tests of contrasts within aov
+Another method to use single-degree-of-freedom contrasts within an anova is to use the split option within the summary function for an aov analysis.  The number of degrees of freedom that a factor can be split into for contrast tests is limited.
+
+```{r}
+Input =("
+Treatment   Response
+ 'D1:C1'    1.0
+ 'D1:C1'    1.2
+ 'D1:C1'    1.3
+ 'D1:C2'    2.1
+ 'D1:C2'    2.2
+ 'D1:C2'    2.3
+ 'D2:C1'    1.4
+ 'D2:C1'    1.6
+ 'D2:C1'    1.7
+ 'D2:C2'    2.5
+ 'D2:C2'    2.6
+ 'D2:C2'    2.8
+ 'Control'  1.0
+ 'Control'  0.9
+ 'Control'  0.8
+")
+
+Data = read.table(textConnection(Input),header=TRUE)
+
+Data$Treatment = factor(Data$Treatment, levels=unique(Data$Treatment))
+```
+ 
+
+Specify the order of factor levels. Otherwise R will alphabetize them.
+
+```{r}
+boxplot(Response ~ Treatment,
+        data = Data,
+        ylab="Response",
+        xlab="Treatment")
+levels(Data$Treatment)
+```
+
+
+
+You need to look at order of factor levels to determine the contrasts
+
+###  Define contrasts
+
+```{r}
+D1vsD2 =          c(1,  1, -1, -1,  0)
+C1vsC2 =          c(1, -1,  1, -1,  0)
+InteractionDC =   c(1, -1, -1,  1,  0)
+TreatsvsControl = c(1,  1,  1,  1, -4)
+
+Matriz = cbind(D1vsD2, C1vsC2,
+               InteractionDC, TreatsvsControl)
+
+contrasts(Data$Treatment) = Matriz
+
+CList = list("D1vsD2" = 1,
+             "C1vsC2" = 2,
+             "InteractionDC" = 3,
+             "TreatsvsControl" = 4)
+```
+
+###  Define model and display summary
+
+```{r}
+model = aov(Response ~ Treatment, data = Data) 
+
+summary(model,
+        split=list(Treatment=CList))
+```
+

@@ -9,8 +9,17 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+# Intro
+
+Different sources:
+
+[Contrasts in R Rose Maier](https://rstudio-pubs-static.s3.amazonaws.com/65059_586f394d8eb84f84b1baaf56ffb6b47f.html)
+
+[Rcompanion](https://rcompanion.org/rcompanion/h_01.html)
 
 ## Contrast Treatment
+
+
 
 ```{r}
 
